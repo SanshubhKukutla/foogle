@@ -1,5 +1,5 @@
 {
-  "name": "Foogle: AI Recipe Reels",
+  "name": "foogle",
   "description": "Foogle turns photos of your fridge or pantry into captivating, short-form recipe videos. Using Google's AI, it identifies ingredients, generates a unique recipe, and produces a tutorial video, all presented in a familiar, swipeable feed.",
   "requestFramePermissions": [
     "camera"
