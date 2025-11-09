@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useContext } from 'react';
 import ImageUploader from '../components/ImageUploader';
 import { analyzeImagesAndSuggestRecipes } from '../services/geminiService';
-import { generateVideo } from '../services/videoService';
 import { AppContext } from '../contexts/AppContext';
 import { Loader } from '../components/icons/Icons';
 
@@ -23,7 +22,7 @@ const UploadPage: React.FC = () => {
 
     try {
       // STEP 1️⃣ — Analyze fridge/pantry images with Gemini
-      setStatus('Analyzing ingredients with Gemini...');
+      setStatus('🔍 Analyzing ingredients with Gemini...');
       const analysis = await analyzeImagesAndSuggestRecipes(files);
       const { visionData, recipes } = analysis;
 
@@ -31,26 +30,35 @@ const UploadPage: React.FC = () => {
         throw new Error("The AI couldn't generate any recipes for these ingredients.");
       }
 
-      // STEP 2️⃣ — Generate videos for all Gemini recipes
-      setStatus(`Creating ${recipes.length} recipe video${recipes.length > 1 ? 's' : ''}...`);
+      // STEP 2️⃣ — Generate videos for all Gemini recipes via backend
+      setStatus(`🎬 Creating ${recipes.length} video${recipes.length > 1 ? 's' : ''} with Veo & ElevenLabs...`);
 
       const videoRecipes = await Promise.all(
         recipes.map(async (recipe, idx) => {
-          setStatus(`🎥 Generating video ${idx + 1} of ${recipes.length}: "${recipe.title}"`);
-          return await generateVideo(recipe);
+          setStatus(`🎥 Generating video ${idx + 1} of ${recipes.length}: "${recipe.title}"...`);
+
+          const response = await fetch('http://localhost:5000/api/generate-video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(recipe),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Video generation failed for "${recipe.title}"`);
+          }
+
+          return await response.json();
         })
       );
 
-      // STEP 3️⃣ — Add all videos to global feed
-      context?.addVideo(videoRecipes);
+      // STEP 3️⃣ — Add generated videos to global feed
+      videoRecipes.forEach((v) => context?.addVideo(v));
 
-      setStatus(`✅ Done! ${videoRecipes.length} new AI-generated cooking reel${videoRecipes.length > 1 ? 's' : ''} are ready.`);
+      setStatus(`✅ Done! ${videoRecipes.length} new AI-generated reel${videoRecipes.length > 1 ? 's' : ''} added to your feed.`);
     } catch (error) {
-      console.error('Generation failed:', error);
+      console.error('❌ Generation failed:', error);
       setStatus(
-        `❌ Error: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }. Please try again.`
+        `⚠️ Error: ${error instanceof Error ? error.message : 'Unknown error occurred.'}`
       );
     } finally {
       setIsLoading(false);
@@ -73,6 +81,7 @@ const UploadPage: React.FC = () => {
           {isLoading && <Loader className="animate-spin mr-2" />}
           {status}
         </p>
+
         <button
           onClick={handleGenerateClick}
           disabled={isLoading || files.length === 0}
