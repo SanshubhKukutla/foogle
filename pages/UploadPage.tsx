@@ -1,13 +1,12 @@
 import React, { useState, useCallback, useContext } from 'react';
 import ImageUploader from '../components/ImageUploader';
 import { analyzeImagesAndSuggestRecipes } from '../services/geminiService';
-import { generateRecipe } from '../services/recipeService';
 import { generateVideo } from '../services/videoService';
-import { makeSignature } from '../utils/signature';
 import { AppContext } from '../contexts/AppContext';
 import { Loader } from '../components/icons/Icons';
 
-// TODO (T1 - Sachi): Improve image cropping/editing UI. Handle API errors gracefully.
+// TODO (T1 - Sachi): Add progress UI for Veo generation and handle Gemini/Veo errors gracefully.
+
 const UploadPage: React.FC = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -21,33 +20,38 @@ const UploadPage: React.FC = () => {
     }
 
     setIsLoading(true);
+
     try {
-      // Step 1: Analyze images and get recipe ideas
+      // STEP 1️⃣ — Analyze fridge/pantry images with Gemini
       setStatus('Analyzing ingredients with Gemini...');
       const analysis = await analyzeImagesAndSuggestRecipes(files);
-      const { visionData, recipeIdeas } = analysis;
+      const { visionData, recipes } = analysis;
 
-      if (!recipeIdeas || recipeIdeas.length === 0) {
-        throw new Error("The AI couldn't come up with any recipes for these ingredients.");
+      if (!recipes || recipes.length === 0) {
+        throw new Error("The AI couldn't generate any recipes for these ingredients.");
       }
-      
-      const signature = makeSignature(visionData.items.map(i => i.name), visionData.tags);
-      const chosenRecipe = recipeIdeas[0]; // Auto-select the first recipe idea for this demo
 
-      // Step 2: Generate a detailed recipe draft
-      setStatus(`Crafting a recipe for "${chosenRecipe.title}"...`);
-      const recipeDraft = await generateRecipe(signature, visionData, chosenRecipe);
+      // STEP 2️⃣ — Generate videos for all Gemini recipes
+      setStatus(`Creating ${recipes.length} recipe video${recipes.length > 1 ? 's' : ''}...`);
 
-      // Step 3: Generate the video
-      setStatus('Generating video with Veo & ElevenLabs...');
-      const videoRecipe = await generateVideo(recipeDraft);
+      const videoRecipes = await Promise.all(
+        recipes.map(async (recipe, idx) => {
+          setStatus(`🎥 Generating video ${idx + 1} of ${recipes.length}: "${recipe.title}"`);
+          return await generateVideo(recipe);
+        })
+      );
 
-      setStatus('Done! Your video is ready.');
-      context?.addVideo(videoRecipe);
+      // STEP 3️⃣ — Add all videos to global feed
+      context?.addVideo(videoRecipes);
 
+      setStatus(`✅ Done! ${videoRecipes.length} new AI-generated cooking reel${videoRecipes.length > 1 ? 's' : ''} are ready.`);
     } catch (error) {
       console.error('Generation failed:', error);
-      setStatus(`An error occurred. Please try again. ${error instanceof Error ? error.message : ''}`);
+      setStatus(
+        `❌ Error: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }. Please try again.`
+      );
     } finally {
       setIsLoading(false);
     }
@@ -66,7 +70,7 @@ const UploadPage: React.FC = () => {
 
       <div className="flex-shrink-0 text-center">
         <p className="text-sm text-gray-300 min-h-[40px] flex items-center justify-center">
-          {isLoading && <Loader className="animate-spin mr-2"/>}
+          {isLoading && <Loader className="animate-spin mr-2" />}
           {status}
         </p>
         <button
@@ -74,7 +78,7 @@ const UploadPage: React.FC = () => {
           disabled={isLoading || files.length === 0}
           className="mt-4 w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 px-4 rounded-lg transition-all duration-200 text-lg shadow-lg"
         >
-          {isLoading ? 'Generating...' : `Generate Reel (${files.length}/4)`}
+          {isLoading ? 'Generating...' : `Generate Reel${files.length > 1 ? 's' : ''} (${files.length}/4)`}
         </button>
       </div>
     </div>
